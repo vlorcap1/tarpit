@@ -71,14 +71,15 @@ Para verificarlo sin Docker, con Python instalado:
 
 ```bash
 pip install -r requirements.txt
-python selftest.py          # deberías ver "11/11 comprobaciones superadas"
+python selftest.py          # debe terminar con "RESULTADO: N/N comprobaciones superadas"
 ```
 
 ## Problemas comunes
 
 - **"Todas las IPs parecen la misma"**: tu proxy no está pasando la IP real.
   El `nginx.conf` incluido ya lo hace; si usas otro proxy, asegúrate de que
-  envía la cabecera `X-Forwarded-For`.
+  envía la cabecera `X-Forwarded-For` y activa `TARPIT_TRUST_PROXY=1`.
+  Nunca la actives si el tarpit queda expuesto directamente a internet.
 - **"Un visitante real quedó atrapado"**: baja los umbrales en `config.py`
   (`GRAD_SLOW`, `GRAD_TARPIT`) o añade su bot a `GOOD_BOTS`.
 - **"La prueba de trabajo tarda mucho en móviles"**: baja `POW_MAX_BITS`.

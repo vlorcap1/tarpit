@@ -4,6 +4,8 @@ services:
     environment:
       # CAMBIA esto por un secreto largo y aleatorio antes de desplegar.
       TARPIT_SECRET: "cambia-esto-por-un-secreto-largo-y-aleatorio"
+      # El nginx de abajo reescribe X-Forwarded-For con la IP real: se puede creer.
+      TARPIT_TRUST_PROXY: "1"
     volumes:
       - weights:/data          # persiste el modelo aprendido entre reinicios
     restart: unless-stopped

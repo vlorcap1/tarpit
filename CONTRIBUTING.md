@@ -17,8 +17,8 @@ abusivo. Toda ayuda en esa dirección es bienvenida.
 2. Mantén el estilo: sin dependencias pesadas, módulos pequeños y comentados.
 3. **Toda capa nueva necesita una comprobación en `selftest.py`.** Si no se
    puede verificar, no entra.
-4. Ejecuta `python selftest.py` antes de proponer cambios: debe dar 11/11 (o
-   más, si añadiste comprobaciones).
+4. Ejecuta `python selftest.py` antes de proponer cambios: deben pasar
+   todas (`RESULTADO: N/N`).
 
 ## Principios del proyecto
 

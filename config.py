@@ -7,6 +7,11 @@ import os
 HOST = os.environ.get("TARPIT_HOST", "127.0.0.1")   # 0.0.0.0 en contenedor
 PORT = int(os.environ.get("TARPIT_PORT", "8080"))
 
+# ¿Creer la cabecera X-Forwarded-For? SOLO si hay delante un proxy de confianza
+# (el nginx incluido) que la reescribe. Si el tarpit queda expuesto sin proxy,
+# cualquiera podría inventarse su IP con esa cabecera. docker-compose la activa.
+TRUST_PROXY = os.environ.get("TARPIT_TRUST_PROXY", "0") == "1"
+
 # Ruta trampa (honeypot). Va como Disallow en robots.txt
 # y como enlace invisible en las páginas reales.
 HONEYPOT_PREFIX = "/zona-restringida"
@@ -16,7 +21,6 @@ MAZE_PREFIX = "/m"
 
 # Secreto para firmar las rutas-cebo por IP (HMAC).
 # En producción, ponlo en la variable de entorno TARPIT_SECRET.
-import os
 SECRET = os.environ.get("TARPIT_SECRET", "cambia-esto-por-un-secreto-largo-y-aleatorio")
 
 # Nombres de cebo atractivos: lo primero que prueba un recolector.
@@ -52,6 +56,8 @@ ASYMMETRY_MB = 100     # MB que el bot descomprime; tú envías solo unos KB
 
 # Degradación silenciosa: probabilidad de bot -> modo de respuesta.
 # Nunca se devuelve 403; la experiencia empeora sin avisar.
+# Al laberinto solo se llega por las reglas o las trampas; el modelo aprendido
+# puede como mucho pedir la prueba de trabajo (ver app.decide_mode).
 GRAD_SLOW = 0.35      # desde aquí: contenido real pero lento
 GRAD_TARPIT = 0.60    # desde aquí: al laberinto
 
@@ -79,3 +85,13 @@ IP_TTL = 3600  # segundos sin actividad antes de olvidar una IP
 # Tope de seguridad: máximo de trozos por respuesta del tarpit.
 # Sube este número para laberintos "casi infinitos" (más coste para ti).
 MAX_CHUNKS = 400
+
+# Límites del laberinto, para que retener bots no tumbe TU sitio.
+# Cada respuesta a goteo ocupa una conexión (en nginx y aquí). Sin límites,
+# un solo bot con cientos de conexiones en paralelo agota las de nginx y deja
+# fuera a los visitantes reales. Por encima del límite, la página falsa se
+# entrega de golpe (barata para ti) en vez de a goteo.
+TARPIT_MAX_CONNS = 200    # respuestas a goteo simultáneas en total
+TARPIT_MAX_PER_IP = 2     # respuestas a goteo simultáneas por IP
+TARPIT_MAX_SECONDS = 60   # duración máxima de una respuesta a goteo
+                          # (si lo subes, sube también proxy_read_timeout en nginx.conf)
