@@ -1,0 +1,22 @@
+services:
+  tarpit:
+    build: .
+    environment:
+      # CAMBIA esto por un secreto largo y aleatorio antes de desplegar.
+      TARPIT_SECRET: "cambia-esto-por-un-secreto-largo-y-aleatorio"
+    volumes:
+      - weights:/data          # persiste el modelo aprendido entre reinicios
+    restart: unless-stopped
+
+  proxy:
+    image: nginx:alpine
+    ports:
+      - "80:80"                 # el único puerto expuesto al exterior
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - tarpit
+    restart: unless-stopped
+
+volumes:
+  weights:
