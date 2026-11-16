@@ -12,7 +12,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v6
         with:
           go-version: stable
@@ -40,6 +40,6 @@ jobs:
       matrix:
         proxy: [nginx, caddy, traefik]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: End-to-end (${{ matrix.proxy }})
         run: scripts/e2e.sh ${{ matrix.proxy }}
