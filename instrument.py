@@ -9,10 +9,11 @@ y ata esas señales al cálculo del hash. Para generarlas, el atacante ya no pue
 usar un bucle de hashes nativo: tiene que incrustar un navegador completo, que
 es justo el coste que queremos imponerle.
 
-Verdad honesta: las señales de cliente siempre son, en teoría, falsificables.
-El objetivo no es volverlas infalsificables, sino **subir el coste** de evadir
-desde "trivial" (anubis-fetch) hasta "ejecutar un navegador real". A ese bot,
-ya en el nivel caro, lo recogen las otras capas (comportamiento y aprendizaje).
+Verdad honesta: el cliente genera estas señales él mismo, así que se pueden
+fabricar sin navegador (el propio selftest.py lo hace con Node, copiando una
+cadena plausible). Esto filtra a clientes ingenuos que no se molestan en
+imitarlas; NO obliga a un atacante decidido a ejecutar un navegador real. A ese
+lo cazan, si acaso, las trampas y el comportamiento.
 """
 
 import re

@@ -33,8 +33,8 @@ a un laberinto, sin saber nunca que lo pillaste. Con cada ataque, el modelo
 mejora.
 
 Soy honesto sobre los límites: no logra detección perfecta (eso es imposible);
-lo que hace es encarecer la evasión hasta forzar al bot a pagar el precio de un
-navegador real. Y es una herramienta de doble filo, así que trae una guía de uso
+lo que hace es encarecer la evasión, y la documentación dice qué filtra y qué
+no. Y es una herramienta de doble filo, así que trae una guía de uso
 responsable y valores por defecto prudentes.
 
 Es software libre (MIT). Se instala en 10 minutos. Feedback bienvenido.

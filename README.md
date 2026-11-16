@@ -41,21 +41,27 @@ docker compose up --build
 # visita http://localhost/
 ```
 
-¿Funciona todo? `python selftest.py` → debe dar "11/11 comprobaciones superadas".
+¿Funciona todo? `python selftest.py` → debe terminar con
+`RESULTADO: N/N comprobaciones superadas` (todas; sin Node instalado se omiten
+las 2 de la prueba de trabajo).
 
 ## Cómo funciona (las cinco capas)
 
 1. **Trampa invisible** — cebos que solo existen en `robots.txt`, únicos por
    visitante. Un humano nunca los pisa; un bot que ignora las reglas, sí.
-2. **Aprende de la trampa** — un modelo usa a los bots atrapados para reconocer a
-   los siguientes por su comportamiento, antes de que caigan.
+2. **Aprende de la trampa** — un modelo usa a los bots atrapados (y a los
+   visitantes que demuestran ser legítimos) para reconocer a los siguientes por
+   su comportamiento. No opina hasta tener ejemplos suficientes de ambos, y
+   como mucho puede pedir el reto: al laberinto solo se llega por las trampas o
+   por señales directas.
 3. **Degradación silenciosa** — nunca un error 403; la experiencia empeora poco a
    poco, así el bot no sabe cuándo lo detectaste.
-4. **Economía invertida** — al bot confirmado rasparte le cuesta caro (prueba de
-   trabajo que exige un navegador real, y respuestas que se inflan al abrirlas) y
-   a ti barato.
-5. **Autojuego** — la defensa se reentrena contra sus propias evasiones y encarece
-   escapar ronda a ronda.
+4. **Economía invertida** — al bot rasparte le cuesta más que a ti: prueba de
+   trabajo con señales de navegador, laberinto a goteo (acotado para no agotar
+   tus conexiones) y, opcionalmente, respuestas que se inflan al abrirlas.
+5. **Autojuego (experimental)** — una simulación que muestra cómo reentrenar la
+   defensa contra sus propias evasiones encarece escapar. Hoy es una simulación
+   con datos sintéticos; todavía no está conectada al servidor.
 
 Los detalles técnicos de cada módulo y la configuración están más abajo.
 
@@ -71,7 +77,7 @@ Los detalles técnicos de cada módulo y la configuración están más abajo.
 | `classifier.py`, `learner.py` | Capa 2: detección y aprendizaje |
 | `maze.py` | Capa 3: el laberinto |
 | `asymmetry.py`, `pow.py`, `instrument.py` | Capa 4: economía invertida |
-| `selfplay.py` | Capa 5: autojuego adversarial |
+| `selfplay.py` | Capa 5: autojuego adversarial (simulación) |
 | `selftest.py` | Comprueba que todo funciona |
 | `Dockerfile`, `docker-compose.yml`, `nginx.conf` | Despliegue |
 
@@ -84,11 +90,26 @@ Los detalles técnicos de cada módulo y la configuración están más abajo.
 - `POW_MIN_BITS` / `POW_MAX_BITS` — dureza de la prueba de trabajo (suave por
   defecto; bájala si tienes visitantes con móviles antiguos).
 - `GRAD_SLOW` / `GRAD_TARPIT` — cuándo empeora la respuesta.
+- `TARPIT_MAX_CONNS` / `TARPIT_MAX_PER_IP` / `TARPIT_MAX_SECONDS` — límites del
+  laberinto a goteo (en total, por IP y duración). Por encima del cupo, la
+  página falsa se entrega de golpe. Así retener bots no deja sin conexiones a
+  tus visitantes. Si subes la duración, sube también `proxy_read_timeout` en
+  `nginx.conf`.
+- `TARPIT_TRUST_PROXY` (variable de entorno) — creer la cabecera
+  `X-Forwarded-For`. Actívala **solo** con un proxy de confianza delante que la
+  reescriba (el `docker-compose.yml` incluido ya lo hace). Sin proxy, cualquiera
+  podría inventarse su IP.
 
 ## Honestidad sobre los límites
 
 - No logra detección perfecta: eso es imposible. Lo que hace es **encarecer** la
-  evasión hasta forzar al bot a pagar el precio de un navegador real.
+  evasión.
+- La prueba de trabajo pide señales de navegador (canvas, pantalla, idioma), pero
+  el cliente las genera él mismo y se pueden fabricar. Filtra a clientes
+  ingenuos; a un atacante decidido lo cazan, si acaso, las trampas.
+- Un "visitante" es la pareja IP + user-agent: si un bot cae en la trampa, no
+  arrastra a quienes comparten su IP (oficinas, universidades, redes móviles).
+  El ritmo de peticiones sí se mide por IP.
 - Protege a los bots buenos que verifica y respeta `robots.txt`, pero la
   responsabilidad de no castigar a rastreadores legítimos es tuya: ajusta
   `GOOD_BOTS`.

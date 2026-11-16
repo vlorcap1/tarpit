@@ -6,17 +6,24 @@ puede falsificar lo que hace. Aquí medimos sus "movimientos":
   - ¿cayó en el enlace trampa invisible?
   - ¿a qué ritmo pide?
   - si dice ser Google/Bing, ¿lo confirma su DNS inverso?
+
+Un "visitante" es la pareja (IP, user-agent), no la IP sola: detrás de una
+misma IP puede haber muchas personas (oficinas, universidades, redes móviles
+con CGNAT). Así, si un bot cae en la trampa, no arrastra al laberinto a todos
+los que comparten su IP. El ritmo de peticiones, en cambio, se mide por IP,
+para que un bot no lo esquive cambiando de user-agent en cada petición.
 """
 
 import time
 import socket
+import hashlib
 from collections import deque
 
 import config
 
 
 class Visitor:
-    __slots__ = ("ip", "first_seen", "last_seen", "hits", "timestamps",
+    __slots__ = ("ip", "label", "first_seen", "last_seen", "hits", "timestamps",
                  "fetched_robots", "hit_honeypot", "claimed_bot",
                  "verified_good", "score", "stage", "bait_hits", "confirmed")
 
@@ -35,16 +42,23 @@ class Visitor:
         self.stage = 0
         self.bait_hits = 0             # cuántos cebos ha pisado (doble puerta)
         self.confirmed = False         # True = bot confirmado por 2ª puerta
+        self.label = None              # etiqueta ya enviada al modelo (0/1)
 
 
 _visitors = {}
+_ip_times = {}   # ip -> deque de marcas de tiempo (ritmo por IP)
 
 
-def get_visitor(ip):
-    v = _visitors.get(ip)
+def _key(ip, ua):
+    return ip + "|" + hashlib.sha256((ua or "").encode()).hexdigest()[:12]
+
+
+def get_visitor(ip, ua=""):
+    k = _key(ip, ua)
+    v = _visitors.get(k)
     if v is None:
         v = Visitor(ip)
-        _visitors[ip] = v
+        _visitors[k] = v
         _maybe_prune()
     return v
 
@@ -54,25 +68,39 @@ def touch(v):
     v.last_seen = now
     v.timestamps.append(now)
     v.hits += 1
+    q = _ip_times.get(v.ip)
+    if q is None:
+        q = _ip_times[v.ip] = deque(maxlen=500)
+    q.append(now)
 
 
 def _maybe_prune():
     if len(_visitors) <= config.MAX_TRACKED_IPS:
         return
     now = time.time()
-    for ip in [ip for ip, v in _visitors.items()
-               if now - v.last_seen > config.IP_TTL]:
-        _visitors.pop(ip, None)
+    for k in [k for k, v in _visitors.items()
+              if now - v.last_seen > config.IP_TTL]:
+        _visitors.pop(k, None)
     # si aún está lleno, descarta el 10% más antiguo
     if len(_visitors) > config.MAX_TRACKED_IPS:
         oldest = sorted(_visitors.items(), key=lambda kv: kv[1].last_seen)
-        for ip, _ in oldest[:max(1, len(_visitors) // 10)]:
-            _visitors.pop(ip, None)
+        for k, _ in oldest[:max(1, len(_visitors) // 10)]:
+            _visitors.pop(k, None)
+    for ip in [ip for ip, q in _ip_times.items()
+               if not q or now - q[-1] > config.IP_TTL]:
+        _ip_times.pop(ip, None)
 
 
 def request_rate(v):
+    """Peticiones recientes de este visitante (IP + user-agent)."""
     now = time.time()
     return sum(1 for t in v.timestamps if now - t <= config.RATE_WINDOW)
+
+
+def ip_rate(ip):
+    """Peticiones recientes de la IP, sumando todos sus user-agents."""
+    now = time.time()
+    return sum(1 for t in _ip_times.get(ip, ()) if now - t <= config.RATE_WINDOW)
 
 
 # --- verificación de bots buenos (DNS inverso + confirmación directa) ---
@@ -124,8 +152,8 @@ def evaluate(v, path, ua_lower):
     if path.startswith(config.HONEYPOT_PREFIX) and not v.fetched_robots:
         score += 20
 
-    # 3. Ritmo excesivo
-    r = request_rate(v)
+    # 3. Ritmo excesivo (por IP: cambiar de user-agent no lo esquiva)
+    r = ip_rate(v.ip)
     if r > config.RATE_MAX:
         score += min(30, r - config.RATE_MAX)
 

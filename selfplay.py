@@ -10,8 +10,10 @@ EVADIR. Cada señal barata que el bot aprende a fingir, la defensa deja de
 valorarla y se apoya en las que aún no finge; eso empuja al bot a fingir también
 las caras (ejecutar un navegador real, un motor de JS), hasta el coste máximo.
 
-Aquí va la simulación que lo demuestra y una función para endurecer el modelo
-real de learner.py mediante entrenamiento adversarial.
+Aquí va la simulación que lo ilustra (con datos sintéticos) y un gancho,
+harden(), para endurecer un modelo mediante entrenamiento adversarial.
+ESTADO: experimental. harden() todavía no está conectado a learner.py ni al
+servidor; la defensa en producción no se reentrena por autojuego.
 """
 
 import random
