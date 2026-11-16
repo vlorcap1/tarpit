@@ -1,14 +1,16 @@
-FROM python:3.12-slim
+# syntax=docker/dockerfile:1
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build
+ARG TARGETOS TARGETARCH VERSION=dev
+WORKDIR /src
+COPY go.mod ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/telarana ./cmd/telarana
 
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY *.py ./
-
-# En contenedor escucha en todas las interfaces; nginx le pasa el tráfico.
-ENV TARPIT_HOST=0.0.0.0 \
-    TARPIT_PORT=8080 \
-    TARPIT_WEIGHTS=/data/weights.json
-
-EXPOSE 8080
-CMD ["python", "app.py"]
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/telarana /telarana
+EXPOSE 8080 9090
+USER nonroot:nonroot
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s CMD ["/telarana", "healthcheck"]
+ENTRYPOINT ["/telarana"]

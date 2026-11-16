@@ -1,0 +1,39 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problem? Do not open an issue: see SECURITY.md.
+        Puedes escribir en español.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: Proxy configuration, TELARANA_* settings (without the secret), requests.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `telarana version`
+    validations:
+      required: true
+  - type: dropdown
+    id: proxy
+    attributes:
+      label: Proxy
+      options: [nginx, Caddy, Traefik, Other]
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      render: text
