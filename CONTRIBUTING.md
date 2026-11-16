@@ -1,41 +1,47 @@
-# Cómo colaborar
+# Contributing
 
-Telaraña quiere ser útil sobre todo a sitios pequeños —blogs, wikis, archivos,
-ONG, proyectos de software libre— que hoy no tienen defensa contra el scraping
-abusivo. Toda ayuda en esa dirección es bienvenida.
+Thanks for helping! Issues and pull requests are welcome in English or
+Spanish.
 
-## Formas de ayudar que no son código
+## Principles
 
-- **Documentación clara.** Si algo no se entendió, arréglalo. Es lo más valioso.
-- **Traducciones** del README y de las guías.
-- **Probar la instalación** en distintos sistemas y reportar qué falló.
-- **Casos de uso reales** y ajustes de `GOOD_BOTS` para rastreadores legítimos.
+- **False positives are worse than misses.** A visitor wrongly blocked is a
+  real person or a useful crawler hurt. New signals must be explainable and
+  must never, on their own, produce `trapped`.
+- **Detection, not punishment.** Telaraña reports a verdict; proxies and
+  dedicated tools act on it.
+- **Small and dependency-free.** The standard library is enough so far. Adding
+  a dependency needs a good reason.
 
-## Colaborar con código
+## Development
 
-1. Abre un issue describiendo el problema o la idea antes de un cambio grande.
-2. Mantén el estilo: sin dependencias pesadas, módulos pequeños y comentados.
-3. **Toda capa nueva necesita una comprobación en `selftest.py`.** Si no se
-   puede verificar, no entra.
-4. Ejecuta `python selftest.py` antes de proponer cambios: deben pasar
-   todas (`RESULTADO: N/N`).
+Go 1.23+ (or Docker: `scripts/go.sh <go args>` runs the toolchain in a
+container).
 
-## Principios del proyecto
+```sh
+go test -race ./...          # unit and HTTP tests
+go vet ./...
+gofmt -l .                   # must print nothing
+scripts/e2e.sh nginx         # end to end through a real proxy (needs Docker)
+scripts/e2e.sh caddy
+scripts/e2e.sh traefik
+```
 
-- **Defender sin dañar la web abierta.** Ante la duda, el valor por defecto más
-  prudente. Respetar a los bots buenos no es opcional.
-- **Honestidad sobre los límites.** Nada de prometer detección perfecta. Si una
-  capa solo sube el coste de evadir, se dice así.
-- **Desplegable por no expertos.** Una función brillante que nadie sabe instalar
-  no ayuda a nadie.
+CI runs all of the above, plus `staticcheck` and `govulncheck`, on every pull
+request.
 
-## Reportar vulnerabilidades
+## Pull requests
 
-Si encuentras un fallo de seguridad en Telaraña, **no lo publiques**: repórtalo
-de forma privada al mantenedor para que pueda arreglarse antes de divulgarlo.
+1. Open an issue first for anything beyond a small fix, so we can agree on the
+   approach.
+2. Add tests: behaviour changes need a test that fails without your change.
+   Integration changes need `scripts/e2e.sh` to pass.
+3. Update the README (both languages if you can; otherwise say so and someone
+   will translate) and the `Unreleased` section of the changelog.
+4. Keep commits focused, with messages that explain why.
 
-## Lo que este proyecto NO quiere ser
+## Releases (maintainers)
 
-Una herramienta ofensiva, un arma, o algo que castigue a investigadores,
-archivistas o buscadores legítimos. Las contribuciones en esa dirección se
-rechazarán. Ver `RESPONSIBLE_USE.md`.
+Update `CHANGELOG.md`, then tag: `git tag -a v1.2.3 -m v1.2.3 && git push origin v1.2.3`.
+The release workflow publishes binaries and the `ghcr.io/vlorcap1/telarana`
+image.

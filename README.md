@@ -1,121 +1,237 @@
 # Telaraña
 
-**Una defensa gratuita contra bots abusivos, para sitios que no pueden pagar una.**
+[![CI](https://github.com/vlorcap1/telarana/actions/workflows/ci.yml/badge.svg)](https://github.com/vlorcap1/telarana/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Los grandes sitios pagan a empresas como Cloudflare o DataDome para frenar a los
-robots que raspan su contenido. Un blog, una wiki comunitaria, un archivo sin
-ánimo de lucro, una ONG o un proyecto de software libre, no. Y hoy los scrapers
-—sobre todo los de IA— les disparan la factura del servidor y a veces los tumban.
+**Trap-based bot detection for your reverse proxy.**
+[Leer en español](README.es.md)
 
-Telaraña es para ellos: la instalas en tu propio servidor, no envías tu tráfico a
-nadie, no cuesta dinero, y aprende de los bots que te atacan a ti.
+Telaraña (Spanish for *spider web*) catches crawlers that read your
+`robots.txt` and go exactly where it tells them not to, or that follow links
+no human can see. It plugs into nginx, Caddy or Traefik as a forward-auth
+service and tells your proxy, per request, whether the visitor is `clean`,
+`suspect` or `trapped`. Your proxy decides what to do.
 
-> ⚠️ **Antes de usarla, lee [RESPONSIBLE_USE.md](RESPONSIBLE_USE.md).** Es una
-> herramienta de doble filo y queremos que ayude, no que dañe.
+- **Low false positives by design.** Every visitor gets its own signed trap
+  paths. A human never requests them; a compliant crawler never does either.
+  Search engines verified by DNS are never penalised.
+- **Explainable.** Every verdict comes with a score and the reasons behind it,
+  in response headers, logs and metrics.
+- **Safe to roll out.** Starts in observe-only mode. With nginx, a Telaraña
+  outage never takes your site down (fail-open).
+- **Small and self-hosted.** A single static Go binary (14 MB container
+  image), no dependencies, no data sent anywhere.
 
-## ¿Es para mí?
+## How it works
 
-Sí, si tienes un sitio web propio que sufre tráfico automatizado abusivo y
-quieres defenderlo sin depender de una empresa externa.
-
-No, si buscas una solución gestionada sin tocar nada, o si tu sitio es grande y
-crítico: ahí un WAF comercial sigue siendo lo sensato. Telaraña es una capa que
-puedes desplegar tú, no un sustituto de todo.
-
-## ¿Qué hace, en una frase?
-
-En vez de bloquear (lo que enseña al bot a evadirte), **degrada en silencio**: al
-tráfico limpio lo deja pasar, al dudoso le pone un pequeño reto invisible, y al
-bot confirmado lo manda a un laberinto interminable, sin decirle nunca que lo
-pilló. Y con cada ataque, **aprende**.
-
-## Empezar
-
-👉 **[Guía de instalación en 10 minutos](INSTALL.md)** — para no expertos.
-
-En resumen, con Docker:
-
-```bash
-# edita el secreto en docker-compose.yml, luego:
-docker compose up --build
-# visita http://localhost/
+```
+                     ┌────────────────────────────────────────────┐
+  visitor ──► proxy ─┤ /robots.txt, /restricted/*  ──► Telaraña    │
+                     │ everything else: ask /check ──► Telaraña    │
+                     │      verdict headers ◄───────┘              │
+                     │ then serve, block, or route ──► your site   │
+                     └────────────────────────────────────────────┘
 ```
 
-¿Funciona todo? `python selftest.py` → debe terminar con
-`RESULTADO: N/N comprobaciones superadas` (todas; sin Node instalado se omiten
-las 2 de la prueba de trabajo).
+1. **robots.txt traps.** Telaraña serves your `robots.txt` with your own rules
+   plus a `Disallow` for the trap area and three tempting paths
+   (`/restricted/db-dump.sql-3f9a…`) that are unique to each visitor and signed
+   with HMAC.
+2. **Double door.** The first request to a trap returns a believable decoy page
+   that links to a second trap. A curious human who typed a path from
+   `robots.txt` stops there (verdict `suspect`); a crawler that follows every
+   link requests the second one and is `trapped`.
+3. **Shared-list detection.** A trap path signed for a *different* address
+   means the crawler got it from somewhere else (shared or replayed crawl
+   lists): `trapped` immediately.
+4. **Link trap (optional).** Add a hidden link to the trap area in your pages,
+   e.g. `<a href="/restricted/archive" hidden>archive</a>`. It is invisible to
+   people and screen readers, disallowed for compliant crawlers, and catches
+   link-following scrapers that never read `robots.txt`.
+5. **Verdicts.** On every `/check`, Telaraña combines trap state with softer
+   signals (claimed search engine that fails DNS verification, request rate,
+   HTTP-library User-Agent) into a score. Only traps can produce `trapped`.
 
-## Cómo funciona (las cinco capas)
+A visitor is the pair *address + User-Agent* (IPv6 addresses grouped by /64),
+so a bot caught behind a shared IP (office, university, mobile carrier) does
+not drag its neighbours with it.
 
-1. **Trampa invisible** — cebos que solo existen en `robots.txt`, únicos por
-   visitante. Un humano nunca los pisa; un bot que ignora las reglas, sí.
-2. **Aprende de la trampa** — un modelo usa a los bots atrapados (y a los
-   visitantes que demuestran ser legítimos) para reconocer a los siguientes por
-   su comportamiento. No opina hasta tener ejemplos suficientes de ambos, y
-   como mucho puede pedir el reto: al laberinto solo se llega por las trampas o
-   por señales directas.
-3. **Degradación silenciosa** — nunca un error 403; la experiencia empeora poco a
-   poco, así el bot no sabe cuándo lo detectaste.
-4. **Economía invertida** — al bot rasparte le cuesta más que a ti: prueba de
-   trabajo con señales de navegador, laberinto a goteo (acotado para no agotar
-   tus conexiones) y, opcionalmente, respuestas que se inflan al abrirlas.
-5. **Autojuego (experimental)** — una simulación que muestra cómo reentrenar la
-   defensa contra sus propias evasiones encarece escapar. Hoy es una simulación
-   con datos sintéticos; todavía no está conectada al servidor.
+## Where it fits
 
-Los detalles técnicos de cada módulo y la configuración están más abajo.
+Telaraña is a **detection signal**, not a complete defence. It complements:
 
-## Archivos del proyecto
+| Tool | What it does | With Telaraña |
+|---|---|---|
+| Challenges (e.g. Anubis) | Proof-of-work to slow down mass scraping | Send only `suspect`/`trapped` visitors to the challenge instead of everyone |
+| Tarpits (e.g. Iocaine, Nepenthes) | Feed bots endless generated content | Route `trapped` visitors there |
+| Rate limiting | Caps request volume | Catches the slow, polite-looking crawler that rate limits miss |
+| Hosted bot management (e.g. Cloudflare) | Global reputation and ML | A self-hosted, explainable signal under your control |
 
-| Archivo | Qué es |
-|---|---|
-| [INSTALL.md](INSTALL.md) | Instalación en 10 minutos, para cualquiera |
-| [RESPONSIBLE_USE.md](RESPONSIBLE_USE.md) | Cómo usarlo sin hacer daño. **Léelo.** |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Cómo ayudar al proyecto |
-| `app.py` | El servidor que lo orquesta todo |
-| `bait.py` | Capa 1: los cebos |
-| `classifier.py`, `learner.py` | Capa 2: detección y aprendizaje |
-| `maze.py` | Capa 3: el laberinto |
-| `asymmetry.py`, `pow.py`, `instrument.py` | Capa 4: economía invertida |
-| `selfplay.py` | Capa 5: autojuego adversarial (simulación) |
-| `selftest.py` | Comprueba que todo funciona |
-| `Dockerfile`, `docker-compose.yml`, `nginx.conf` | Despliegue |
+What it does **not** catch: a bot that never reads `robots.txt` and never
+follows a trap link. Pair it with rate limiting or a challenge for those.
 
-## Configuración (config.py)
+## Quick start
 
-- `TARPIT_SECRET` — firma las trampas. **Cámbialo** (en docker-compose.yml).
-- `GOOD_BOTS` — rastreadores legítimos que NUNCA deben caer. Amplíala.
-- `ASYMMETRY_ON` (por defecto **apagado**) — la respuesta que se infla. Enciéndelo
-  solo a conciencia.
-- `POW_MIN_BITS` / `POW_MAX_BITS` — dureza de la prueba de trabajo (suave por
-  defecto; bájala si tienes visitantes con móviles antiguos).
-- `GRAD_SLOW` / `GRAD_TARPIT` — cuándo empeora la respuesta.
-- `TARPIT_MAX_CONNS` / `TARPIT_MAX_PER_IP` / `TARPIT_MAX_SECONDS` — límites del
-  laberinto a goteo (en total, por IP y duración). Por encima del cupo, la
-  página falsa se entrega de golpe. Así retener bots no deja sin conexiones a
-  tus visitantes. Si subes la duración, sube también `proxy_read_timeout` en
-  `nginx.conf`.
-- `TARPIT_TRUST_PROXY` (variable de entorno) — creer la cabecera
-  `X-Forwarded-For`. Actívala **solo** con un proxy de confianza delante que la
-  reescriba (el `docker-compose.yml` incluido ya lo hace). Sin proxy, cualquiera
-  podría inventarse su IP.
+Requires Docker. This runs nginx in front of a sample app that echoes the
+headers it receives:
 
-## Honestidad sobre los límites
+```sh
+git clone https://github.com/vlorcap1/telarana && cd telarana/examples/nginx
+export TELARANA_SECRET=$(openssl rand -hex 32)
+docker compose up --build
+```
 
-- No logra detección perfecta: eso es imposible. Lo que hace es **encarecer** la
-  evasión.
-- La prueba de trabajo pide señales de navegador (canvas, pantalla, idioma), pero
-  el cliente las genera él mismo y se pueden fabricar. Filtra a clientes
-  ingenuos; a un atacante decidido lo cazan, si acaso, las trampas.
-- Un "visitante" es la pareja IP + user-agent: si un bot cae en la trampa, no
-  arrastra a quienes comparten su IP (oficinas, universidades, redes móviles).
-  El ritmo de peticiones sí se mide por IP.
-- Protege a los bots buenos que verifica y respeta `robots.txt`, pero la
-  responsabilidad de no castigar a rastreadores legítimos es tuya: ajusta
-  `GOOD_BOTS`.
-- Es una base sólida y educativa. Para un sitio de alto riesgo, complétala con
-  copias de seguridad, buenas prácticas y, si hace falta, un WAF.
+Then, in another terminal:
 
-## Licencia
+```sh
+curl -s localhost:8080/ | grep -i telarana          # X-Telarana-Verdict: clean
+curl -s localhost:8080/robots.txt                   # your rules + trap paths
+curl -s localhost:8080/restricted/db-dump.sql       # decoy page
+```
 
-[MIT](LICENSE). Úsalo libremente, en infraestructura propia, con responsabilidad.
+## Integrations
+
+Complete, tested configurations are in [`examples/`](examples). Each one is
+exercised end to end in CI by [`scripts/e2e.sh`](scripts/e2e.sh).
+
+| Proxy | Mechanism | Example | If Telaraña is down |
+|---|---|---|---|
+| nginx | `auth_request` | [examples/nginx](examples/nginx) | **Fail-open** (site keeps working; verdict `unavailable`) |
+| Caddy | `forward_auth` | [examples/caddy](examples/caddy) | Requests fail (502) |
+| Traefik | `ForwardAuth` middleware | [examples/traefik](examples/traefik) | Requests fail |
+
+With Caddy and Traefik, run Telaraña with a restart policy and its health
+check, and monitor it like any other dependency of your site.
+
+In every case the proxy must:
+
+1. Send `/robots.txt` and the trap area (`/restricted`, `/restricted/*`) to
+   Telaraña, passing the client address in `X-Forwarded-For`.
+2. Ask `/check` before serving anything else, passing the original path in
+   `X-Original-URI` (nginx) or `X-Forwarded-Uri` (Caddy, Traefik, automatic).
+
+## Verdicts
+
+`/check` always answers with these headers:
+
+| Header | Example | Meaning |
+|---|---|---|
+| `X-Telarana-Verdict` | `clean`, `verified-bot`, `suspect`, `trapped` | The verdict |
+| `X-Telarana-Score` | `0`–`100` | 100 only for confirmed traps |
+| `X-Telarana-Reasons` | `trap:first-hit,ua:tool` | Why |
+
+| Reason | Points | |
+|---|---|---|
+| `trap:repeat` / `trap:shared` | — | Confirmed: verdict `trapped`, score 100 |
+| `trap:first-hit` | 60 | Requested one trap (the decoy) |
+| `goodbot:impostor` | 50 | Claims to be a search engine; DNS says otherwise |
+| `rate:high` | up to 30 | Above `TELARANA_RATE_MAX` requests per window |
+| `ua:tool` | 15 | Empty or HTTP-library User-Agent (curl, python-requests…) |
+| `goodbot:verified` | — | DNS-verified search engine: never penalised |
+
+A score of `TELARANA_SUSPECT_SCORE` (default 50) or more is `suspect`. Rate and
+User-Agent together reach 45 at most, so a fast `curl` script alone is never
+suspect.
+
+The status code is `200` except in `enforce` mode for `trapped` visitors, which
+get `TELARANA_ENFORCE_STATUS` (default `403`). Suspects are always `200`: route
+them with the verdict header if you want (for example, to a challenge).
+
+## Rolling out
+
+1. **Observe** (default). Deploy, then watch `visitor trapped` log lines,
+   the `X-Telarana-Verdict` in your access logs and the metrics for a week or
+   two. Check who is trapped.
+2. **Add your crawlers.** If a crawler you care about shows up as an impostor,
+   or verifies by IP lists rather than DNS, see `TELARANA_GOOD_BOTS`.
+3. **Enforce.** Set `TELARANA_MODE=enforce`, or keep observing and act on the
+   verdict header in your proxy (route `trapped` to a tarpit, `suspect` to a
+   challenge).
+
+## Configuration
+
+All configuration is through environment variables. Invalid values stop the
+program with a message that lists every problem.
+
+| Variable | Default | Description |
+|---|---|---|
+| `TELARANA_SECRET` | *(required)* | At least 32 characters. Signs trap paths. `openssl rand -hex 32` |
+| `TELARANA_SECRET_PREVIOUS` | | Previous secret, still accepted for trap paths while rotating |
+| `TELARANA_MODE` | `observe` | `observe` or `enforce` |
+| `TELARANA_ENFORCE_STATUS` | `403` | Status for `trapped` visitors in enforce mode (400–599) |
+| `TELARANA_TRAP_PREFIX` | `/restricted` | Trap area. Pick something plausible that your site does not use |
+| `TELARANA_ROBOTS_FILE` | | Your site's `robots.txt`, served before the trap rules |
+| `TELARANA_TRUSTED_PROXIES` | loopback + private ranges | Comma-separated IPs/CIDRs allowed to set `X-Forwarded-For` |
+| `TELARANA_GOOD_BOTS` | | Extra DNS-verifiable crawlers: `name:.domain1\|.domain2;name2:.domain3` |
+| `TELARANA_SUSPECT_SCORE` | `50` | Score at which a visitor becomes `suspect` |
+| `TELARANA_RATE_MAX` | `60` | Requests per window before `rate:high` |
+| `TELARANA_RATE_WINDOW` | `10s` | Rate window |
+| `TELARANA_VISITOR_TTL` | `24h` | Idle time after which a visitor is forgotten |
+| `TELARANA_MAX_VISITORS` | `100000` | Memory cap for tracked visitors |
+| `TELARANA_DNS_TIMEOUT` | `2s` | Timeout for crawler verification |
+| `TELARANA_LISTEN` | `:8080` | Public listener (behind your proxy) |
+| `TELARANA_ADMIN_LISTEN` | `:9090` | Metrics and health; `off` to disable. Keep it private |
+| `TELARANA_LOG_LEVEL` | `info` | `debug` logs every non-clean check |
+| `TELARANA_LOG_FORMAT` | `json` | `json` or `text` |
+
+Built-in verified crawlers: Googlebot, Bingbot, Applebot and YandexBot. Only
+crawlers that document reverse-DNS verification belong in this list; one that
+publishes IP ranges instead would be wrongly flagged as an impostor.
+
+## Operations
+
+- **Health:** `GET /healthz` on both listeners; `telarana healthcheck` for
+  container health checks (used by the image).
+- **Metrics:** `GET /metrics` on the admin listener, Prometheus format:
+  `telarana_checks_total{verdict}`, `telarana_trap_hits_total{kind}`,
+  `telarana_trapped_total{cause}`, `telarana_robots_served_total`,
+  `telarana_goodbot_verifications_total{result}`,
+  `telarana_enforcements_total`, `telarana_visitors_tracked`.
+- **Logs:** structured JSON on stdout. `trap hit` and `visitor trapped`
+  include address, User-Agent and path.
+- **Secret rotation:** set the new value in `TELARANA_SECRET` and the old one in
+  `TELARANA_SECRET_PREVIOUS`, restart, and remove the old one a day later.
+- **State:** kept in memory, per instance. Run a single instance, or route each
+  client to the same instance. A shared backend is on the roadmap.
+
+## Security notes
+
+- **Never let a shared cache store `/robots.txt`.** Its content differs per
+  visitor; Telaraña sends `Cache-Control: private, no-store`. If a CDN sits in
+  front, make sure it honours that header or bypasses that path.
+- **Trusted proxies.** `X-Forwarded-For` is only believed from
+  `TELARANA_TRUSTED_PROXIES`, walking the chain from the right. Do not expose
+  Telaraña directly to the internet; keep the admin port private.
+- **Decoys.** The decoy page and trap responses never contain real data.
+
+## Responsible use
+
+Use Telaraña on infrastructure you operate. It is built to defend sites without
+closing off the open web: it never penalises verified search engines, keeps
+trap paths out of reach of people and compliant crawlers, and starts in
+observe mode. Review who you trap, and remember that research crawlers,
+archives and accessibility tools crawl too.
+
+## Building from source
+
+Go 1.23 or later:
+
+```sh
+go build -o telarana ./cmd/telarana
+TELARANA_SECRET=$(openssl rand -hex 32) ./telarana
+```
+
+No Go installed? `scripts/go.sh` runs the toolchain in Docker
+(`scripts/go.sh test ./...`).
+
+## Project status
+
+Version 1 is a rewrite in Go of an earlier Python prototype (kept as
+[v0.1.0](https://github.com/vlorcap1/telarana/releases/tag/v0.1.0)). See the
+[changelog](CHANGELOG.md). Contributions are welcome: read
+[CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities privately as
+described in [SECURITY.md](SECURITY.md).
+
+## License
+
+[MIT](LICENSE)

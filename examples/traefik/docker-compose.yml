@@ -1,0 +1,41 @@
+# Demo: Traefik in front of a sample app, with Telaraña via ForwardAuth.
+#   export TELARANA_SECRET=$(openssl rand -hex 32)
+#   docker compose up --build        ->  http://localhost:8080
+services:
+  telarana:
+    build: ../..
+    environment:
+      TELARANA_SECRET: ${TELARANA_SECRET:?set TELARANA_SECRET, e.g. openssl rand -hex 32}
+      TELARANA_MODE: ${TELARANA_MODE:-observe}
+      TELARANA_ROBOTS_FILE: /etc/telarana/robots.txt
+    volumes:
+      - ../robots.txt:/etc/telarana/robots.txt:ro
+    labels:
+      traefik.enable: "true"
+      # Telaraña serves robots.txt (your rules + per-visitor traps) and the trap area.
+      traefik.http.routers.telarana.rule: Path(`/robots.txt`) || Path(`/restricted`) || PathPrefix(`/restricted/`)
+      traefik.http.routers.telarana.priority: "100"
+      traefik.http.routers.telarana.entrypoints: web
+      traefik.http.services.telarana.loadbalancer.server.port: "8080"
+      # The check every other request goes through.
+      traefik.http.middlewares.telarana-check.forwardauth.address: http://telarana:8080/check
+      traefik.http.middlewares.telarana-check.forwardauth.authResponseHeaders: X-Telarana-Verdict,X-Telarana-Score,X-Telarana-Reasons
+
+  app:
+    image: traefik/whoami:v1.10.3
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.app.rule: PathPrefix(`/`)
+      traefik.http.routers.app.entrypoints: web
+      traefik.http.routers.app.middlewares: telarana-check@docker
+
+  proxy:
+    image: traefik:v3.6
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+    ports:
+      - "${PORT:-8080}:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro

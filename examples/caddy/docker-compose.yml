@@ -1,0 +1,23 @@
+# Demo: Caddy in front of a sample app, with Telaraña via forward_auth.
+#   export TELARANA_SECRET=$(openssl rand -hex 32)
+#   docker compose up --build        ->  http://localhost:8080
+services:
+  telarana:
+    build: ../..
+    environment:
+      TELARANA_SECRET: ${TELARANA_SECRET:?set TELARANA_SECRET, e.g. openssl rand -hex 32}
+      TELARANA_MODE: ${TELARANA_MODE:-observe}
+      TELARANA_ROBOTS_FILE: /etc/telarana/robots.txt
+    volumes:
+      - ../robots.txt:/etc/telarana/robots.txt:ro
+
+  app:
+    image: traefik/whoami:v1.10.3
+
+  proxy:
+    image: caddy:2.8-alpine
+    ports:
+      - "${PORT:-8080}:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on: [telarana, app]

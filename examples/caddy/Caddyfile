@@ -1,0 +1,20 @@
+{
+	admin off
+}
+
+:80 {
+	# Telaraña serves robots.txt (your rules + per-visitor traps) and the trap area.
+	@telarana path /robots.txt /restricted /restricted/*
+	handle @telarana {
+		reverse_proxy telarana:8080
+	}
+
+	# Every other request is checked first.
+	handle {
+		forward_auth telarana:8080 {
+			uri /check
+			copy_headers X-Telarana-Verdict X-Telarana-Score X-Telarana-Reasons
+		}
+		reverse_proxy app:80
+	}
+}
