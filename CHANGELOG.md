@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-15
+
 ### Changed
 - Complete rewrite in Go, focused on detection. Telaraña is now a forward-auth
   service for nginx (`auth_request`), Caddy (`forward_auth`) and Traefik
@@ -35,5 +37,6 @@ All notable changes to this project are documented here. The format follows
 Educational prototype in Python (aiohttp): robots.txt traps, online learning
 model, proof-of-work, drip-fed maze and self-play simulation.
 
-[Unreleased]: https://github.com/vlorcap1/telarana/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/vlorcap1/telarana/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/vlorcap1/telarana/compare/v0.1.0...v1.0.0
 [0.1.0]: https://github.com/vlorcap1/telarana/releases/tag/v0.1.0
